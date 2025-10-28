@@ -1,0 +1,380 @@
+import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { bootstrapApplication } from '@angular/platform-browser';
+import 'zone.js'
+  standalone: true,
+  template: `
+    <!-- Main container -->
+    <div class="bg-gray-900 min-h-screen w-full flex flex-col items-center justify-center p-4 font-sans">
+      <div class="w-full max-w-2xl bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-8 space-y-6">
+        
+        <!-- Header -->
+        <header class="text-center">
+          <h1 class="text-3xl md:text-4xl font-bold text-cyan-400">X-Ray Report Analyzer</h1>
+          <p class="text-gray-400 mt-2">Upload an X-ray image to get an AI-powered analysis.</p>
+        </header>
+
+        <!-- Image Upload Section -->
+        <div class="flex flex-col items-center justify-center w-full">
+          <label for="dropzone-file" class="flex flex-col items-center justify-center w-full h-64 border-2 border-gray-600 border-dashed rounded-lg cursor-pointer bg-gray-700 hover:bg-gray-600 transition-colors">
+            @if (imageUrl()) {
+              <img [src]="imageUrl()" alt="Uploaded X-Ray" class="h-full w-full object-contain rounded-lg p-2" />
+            } @else {
+              <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                <svg class="w-10 h-10 mb-4 text-gray-400" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/></svg>
+                <p class="mb-2 text-sm text-gray-400"><span class="font-semibold">Click to upload</span> or drag and drop</p>
+                <p class="text-xs text-gray-500">PNG, JPG, or JPEG</p>
+              </div>
+            }
+            <input id="dropzone-file" type="file" class="hidden" (change)="onFileSelected($event)" accept="image/png, image/jpeg, image/jpg" />
+          </label>
+        </div> 
+
+        <!-- Language Selection -->
+        <div class="w-full">
+            <label for="language-select" class="block mb-2 text-sm font-medium text-gray-300">Select Report Language</label>
+            <select id="language-select" (change)="onLanguageChange($event)" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-cyan-500 focus:border-cyan-500 block w-full p-2.5">
+                <option value="en-US" selected>English</option>
+                <option value="es-ES">Español (Spanish)</option>
+                <option value="fr-FR">Français (French)</option>
+                <option value="de-DE">Deutsch (German)</option>
+                <option value="hi-IN">हिन्दी (Hindi)</option>
+                <option value="ja-JP">日本語 (Japanese)</option>
+                <option value="ar-SA">العربية (Arabic)</option>
+            </select>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex flex-col sm:flex-row gap-4">
+          <button (click)="analyzeImage()" [disabled]="!selectedFile() || isLoading()" class="w-full flex-1 inline-flex items-center justify-center px-5 py-3 text-base font-medium text-center text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 focus:ring-4 focus:ring-cyan-500 disabled:bg-gray-500 transition-all">
+            @if (isLoading()) {
+              <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            } @else {
+              <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"></path><path fill-rule="evenodd" d="M.458 10C3.732 4.943 7.523 3 10 3s6.268 1.943 9.542 7c-3.274 5.057-7.03 7-9.542 7S3.732 15.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"></path></svg>
+            }
+            {{ isLoading() ? 'Analyzing...' : 'Analyze Report' }}
+          </button>
+          <button (click)="speakResults()" [disabled]="!analysisResult() || isSpeaking()" class="w-full sm:w-auto px-5 py-3 text-base font-medium text-center text-gray-900 bg-gray-300 rounded-lg hover:bg-gray-400 focus:ring-4 focus:ring-gray-200 disabled:bg-gray-500 disabled:text-gray-300 transition-all">
+            @if (isSpeaking()) {
+              <svg class="animate-pulse h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M4.5 10.5C3.67 10.5 3 11.17 3 12s.67 1.5 1.5 1.5S6 12.83 6 12 5.33 10.5 4.5 10.5zM12 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zm7.5 0c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5z"></path></svg>
+            } @else {
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clip-rule="evenodd"></path></svg>
+            }
+          </button>
+           <button (click)="stopSpeaking()" [disabled]="!isSpeaking()" class="w-full sm:w-auto px-5 py-3 text-base font-medium text-center text-white bg-red-600 rounded-lg hover:bg-red-700 focus:ring-4 focus:ring-red-500 disabled:bg-gray-600 disabled:cursor-not-allowed transition-all">
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd"></path></svg>
+          </button>
+        </div>
+
+        <!-- Error Message -->
+        @if (errorMessage()) {
+          <div class="p-4 mb-4 text-sm text-red-300 rounded-lg bg-red-900/50" role="alert">
+            <span class="font-medium">Error:</span> {{ errorMessage() }}
+          </div>
+        }
+
+        <!-- Analysis Result Section -->
+        @if (analysisResult()) {
+          <div class="pt-4 border-t border-gray-700">
+            <h2 class="text-2xl font-semibold text-cyan-300 mb-3">Analysis Report</h2>
+            <div class="text-gray-300 prose prose-invert max-w-none prose-p:my-3 prose-headings:text-cyan-400 prose-headings:font-semibold">
+              <div class="whitespace-pre-wrap font-sans">{{ analysisResult() }}</div>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  `,
+  styles: [`
+    :host {
+      display: block;
+    }
+  `],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class App {
+  // --- State Signals ---
+  selectedFile = signal<File | null>(null);
+  imageUrl = signal<string | null>(null);
+  analysisResult = signal<string>('');
+  isLoading = signal<boolean>(false);
+  isSpeaking = signal<boolean>(false);
+  errorMessage = signal<string>('');
+  selectedLanguage = signal<string>('en-US');
+
+  private audioPlayer: HTMLAudioElement | null = null;
+  
+  // --- Gemini API Configuration ---
+  // Leave apiKey as an empty string, it will be automatically handled.
+  private readonly apiKey = ""; 
+  private readonly visionApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${this.apiKey}`;
+  private readonly ttsApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${this.apiKey}`;
+
+  /**
+   * Handles the file selection event from the input.
+   * @param event The file input change event.
+   */
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files[0]) {
+      const file = input.files[0];
+      this.selectedFile.set(file);
+      this.analysisResult.set('');
+      this.errorMessage.set('');
+      this.stopSpeaking();
+
+      // Create a URL for image preview
+      const reader = new FileReader();
+      reader.onload = (e: ProgressEvent<FileReader>) => {
+        this.imageUrl.set(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  /**
+   * Updates the selected language signal when the user changes the dropdown.
+   * @param event The change event from the select element.
+   */
+  onLanguageChange(event: Event) {
+    const selectElement = event.target as HTMLSelectElement;
+    this.selectedLanguage.set(selectElement.value);
+  }
+
+  /**
+   * Analyzes the uploaded X-ray image using the Gemini Vision API.
+   */
+  async analyzeImage(): Promise<void> {
+    const file = this.selectedFile();
+    if (!file) {
+      this.errorMessage.set('Please select an image file first.');
+      return;
+    }
+
+    this.isLoading.set(true);
+    this.analysisResult.set('');
+    this.errorMessage.set('');
+    this.stopSpeaking();
+
+    try {
+      const base64Data = await this.fileToBase64(file);
+      const languageName = this.languageCodeToName(this.selectedLanguage());
+      const prompt = `Analyze this X-ray image for any potential diseases, fractures, or abnormalities. Structure your response into the following sections with clear headings:
+### Findings
+A concise, clear summary of your findings in a single paragraph, suitable for a medical report.
+
+### Prevention & Suggestions
+Provide actionable advice on prevention and suggest next steps for the patient.
+
+### Remedies
+Suggest potential remedies or treatments for the identified conditions.
+
+IMPORTANT: The entire report must be written in ${languageName}.`;
+
+      const payload = {
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              { inlineData: { mimeType: file.type, data: base64Data } }
+            ]
+          }
+        ],
+      };
+
+      const response = await this.fetchWithBackoff(this.visionApiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+      
+      const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        this.analysisResult.set(text);
+      } else {
+        throw new Error('Analysis failed. The API response was invalid.');
+      }
+    } catch (error) {
+      console.error('Error analyzing image:', error);
+      this.errorMessage.set('Failed to analyze the image. Please try again.');
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  /**
+   * Converts the analysis text to speech using the Gemini TTS API.
+   */
+  async speakResults(): Promise<void> {
+    const textToSpeak = this.analysisResult();
+    if (!textToSpeak) return;
+
+    this.stopSpeaking(); // Stop any previous speech
+    this.isSpeaking.set(true);
+    this.errorMessage.set('');
+
+    try {
+        const payload = {
+            contents: [{ parts: [{ text: textToSpeak }] }],
+            generationConfig: {
+                responseModalities: ["AUDIO"],
+                speechConfig: {
+                    voiceConfig: { prebuiltVoiceConfig: { voiceName: "Charon" } }
+                }
+            },
+        };
+
+        const response = await this.fetchWithBackoff(this.ttsApiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        const result = await response.json();
+        const audioData = result?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        const mimeType = result?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType;
+
+        if (audioData && mimeType && mimeType.startsWith("audio/")) {
+            const sampleRateMatch = mimeType.match(/rate=(\d+)/);
+            const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
+            const pcmData = this.base64ToArrayBuffer(audioData);
+            const pcm16 = new Int16Array(pcmData);
+            const wavBlob = this.pcmToWav(pcm16, 1, sampleRate);
+            const audioUrl = URL.createObjectURL(wavBlob);
+            
+            this.audioPlayer = new Audio(audioUrl);
+            this.audioPlayer.play();
+            this.audioPlayer.onended = () => {
+                this.isSpeaking.set(false);
+                URL.revokeObjectURL(audioUrl);
+                this.audioPlayer = null;
+            };
+            this.audioPlayer.onerror = () => {
+                this.errorMessage.set('Error playing the audio file.');
+                this.isSpeaking.set(false);
+                URL.revokeObjectURL(audioUrl);
+                this.audioPlayer = null;
+            }
+        } else {
+            throw new Error('TTS failed. No audio data received.');
+        }
+
+    } catch (error) {
+        console.error('Error with text-to-speech:', error);
+        this.errorMessage.set('Could not play the audio report.');
+        this.isSpeaking.set(false);
+    }
+  }
+
+  /**
+   * Stops the currently playing audio.
+   */
+  stopSpeaking(): void {
+    if (this.audioPlayer) {
+      this.audioPlayer.pause();
+      this.audioPlayer.currentTime = 0;
+      this.audioPlayer = null;
+    }
+    this.isSpeaking.set(false);
+  }
+
+  /**
+   * Converts a File object to a base64 encoded string.
+   */
+  private fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const base64String = (reader.result as string).split(',')[1];
+        resolve(base64String);
+      };
+      reader.onerror = error => reject(error);
+    });
+  }
+
+  /**
+   * A wrapper around fetch that implements exponential backoff for retries.
+   */
+  private async fetchWithBackoff(url: string, options: RequestInit, retries = 3, delay = 1000): Promise<Response> {
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        if (response.status >= 400 && response.status < 500) {
+          console.error("Client error:", response.status, await response.text());
+          throw new Error(`Request failed with status: ${response.status}`);
+        }
+        throw new Error(`Server error: ${response.status}`);
+      }
+      return response;
+    } catch (error) {
+      if (retries > 0) {
+        await new Promise(res => setTimeout(res, delay));
+        return this.fetchWithBackoff(url, options, retries - 1, delay * 2);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Decodes a base64 string into an ArrayBuffer.
+   */
+  private base64ToArrayBuffer(base64: string): ArrayBuffer {
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+  
+  /**
+   * Converts a language code to its full name for the prompt.
+   */
+  private languageCodeToName(code: string): string {
+    const languageMap: { [key: string]: string } = {
+        'en-US': 'English', 'es-ES': 'Spanish', 'fr-FR': 'French',
+        'de-DE': 'German', 'hi-IN': 'Hindi', 'ja-JP': 'Japanese', 'ar-SA': 'Arabic',
+    };
+    return languageMap[code] || 'English';
+  }
+
+  /**
+   * Converts raw PCM audio data to a WAV file Blob.
+   */
+  private pcmToWav(pcmData: Int16Array, numChannels: number, sampleRate: number): Blob {
+    const blockAlign = numChannels * 2;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = pcmData.length * 2;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+
+    view.setUint32(0, 0x52494646, false); // "RIFF"
+    view.setUint32(4, 36 + dataSize, true);
+    view.setUint32(8, 0x57415645, false); // "WAVE"
+    view.setUint32(12, 0x666d7420, false); // "fmt "
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, 16, true);
+    view.setUint32(36, 0x64617461, false); // "data"
+    view.setUint32(40, dataSize, true);
+
+    for (let i = 0; i < pcmData.length; i++) {
+        view.setInt16(44 + i * 2, pcmData[i], true);
+    }
+
+    return new Blob([view], { type: 'audio/wav' });
+  }
+}
+
+bootstrapApplication(App);
+
