@@ -110,14 +110,21 @@ export class App {
   private audioPlayer: HTMLAudioElement | null = null;
   
   // --- Gemini API Configuration ---
-  // Leave apiKey as an empty string, it will be automatically handled.
-  private readonly apiKey = ""; 
+  // 1. Get your API key from Google AI Studio: https://aistudio.google.com/app/apikey
+  // 2. Paste your key here.
+  //
+  // !!! CRITICAL ERROR !!!
+  // The error "API key not valid" means you MUST replace the placeholder text below.
+  // Your app WILL NOT work until you do this.
+  private readonly apiKey = "AIzaSyClC25nDWI5Aco4HdMCaPrRF5n91k0x1Ko"; // <-- REPLACE THIS
+  
   private readonly visionApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${this.apiKey}`;
   private readonly ttsApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${this.apiKey}`;
+  private readonly placeholderKeyError = 'Error: You must replace the placeholder API key in the code (line 122) with your own key from Google AI Studio.';
+
 
   /**
    * Handles the file selection event from the input.
-   * @param event The file input change event.
    */
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -150,6 +157,11 @@ export class App {
    * Analyzes the uploaded X-ray image using the Gemini Vision API.
    */
   async analyzeImage(): Promise<void> {
+    if (this.apiKey.includes('PASTE_YOUR_NEW_API_KEY_HERE')) {
+      this.errorMessage.set(this.placeholderKeyError);
+      return;
+    }
+
     const file = this.selectedFile();
     if (!file) {
       this.errorMessage.set('Please select an image file first.');
@@ -195,11 +207,9 @@ IMPORTANT: The entire report must be written in ${languageName}.`;
 
       const result = await response.json();
       
-      // Check for safety blocks or no candidates
       if (!result.candidates || result.candidates.length === 0) {
         console.error('API Error: No candidates returned. Full response:', JSON.stringify(result, null, 2));
         let apiError = 'Analysis failed: The API returned no response.';
-        // Check for specific safety feedback
         if (result.promptFeedback && result.promptFeedback.blockReason) {
           apiError += ` (Reason: ${result.promptFeedback.blockReason})`;
         } else if (result.candidates?.[0]?.finishReason) {
@@ -212,7 +222,6 @@ IMPORTANT: The entire report must be written in ${languageName}.`;
       if (text) {
         this.analysisResult.set(text);
       } else {
-        // Log the actual response for debugging
         console.error('Invalid API response structure:', JSON.stringify(result, null, 2));
         throw new Error('Analysis failed: The API response structure was invalid.');
       }
@@ -224,14 +233,13 @@ IMPORTANT: The entire report must be written in ${languageName}.`;
         if (error.message.includes('API response structure was invalid')) {
           friendlyError = 'Analysis failed: The API returned an unexpected response. Check console for details.';
         } else if (error.message.includes('API returned no response')) {
-          friendlyError = error.message; // Show the specific error (e.g., safety block)
+          friendlyError = error.message; 
         } else if (error.message.includes('Request failed with status:')) {
-          // This will now include the 4xx message from fetchWithBackoff
           friendlyError = `Analysis failed. ${error.message}`; 
-        } else if (error.message.includes('fetch')) {
-           friendlyError = 'Analysis failed: A network error occurred. Please check your connection.';
+        } else if (error.message.toLowerCase().includes('failed to fetch')) {
+           friendlyError = 'Analysis failed: A network error occurred. This could be your internet connection or a browser security (CORS) issue blocking the request. Please check your connection and the browser console for more details.';
         } else {
-           friendlyError = error.message; // Show other unknown errors
+           friendlyError = error.message; 
         }
       }
       this.errorMessage.set(friendlyError);
@@ -244,10 +252,15 @@ IMPORTANT: The entire report must be written in ${languageName}.`;
    * Converts the analysis text to speech using the Gemini TTS API.
    */
   async speakResults(): Promise<void> {
+    if (this.apiKey.includes('PASTE_YOUR_NEW_API_KEY_HERE')) {
+      this.errorMessage.set(this.placeholderKeyError);
+      return;
+    }
+
     const textToSpeak = this.analysisResult();
     if (!textToSpeak) return;
 
-    this.stopSpeaking(); // Stop any previous speech
+    this.stopSpeaking(); 
     this.isSpeaking.set(true);
     this.errorMessage.set('');
 
@@ -269,8 +282,9 @@ IMPORTANT: The entire report must be written in ${languageName}.`;
         });
         
         const result = await response.json();
-        const audioData = result?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        const mimeType = result?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType;
+        const part = result?.candidates?.[0]?.content?.parts?.[0];
+        const audioData = part?.inlineData?.data;
+        const mimeType = part?.inlineData?.mimeType;
 
         if (audioData && mimeType && mimeType.startsWith("audio/")) {
             const sampleRateMatch = mimeType.match(/rate=(\d+)/);
@@ -284,21 +298,19 @@ IMPORTANT: The entire report must be written in ${languageName}.`;
 
             this.audioPlayer.onended = () => {
                 this.isSpeaking.set(false);
-                URL.revokeObjectURL(audioUrl); // Revoke from closure
+                URL.revokeObjectURL(audioUrl);
                 this.audioPlayer = null;
             };
             this.audioPlayer.onerror = () => {
                 this.errorMessage.set('Error playing the audio file.');
                 this.isSpeaking.set(false);
-                URL.revokeObjectURL(audioUrl); // Revoke from closure
+                URL.revokeObjectURL(audioUrl); 
                 this.audioPlayer = null;
             };
 
-            // Use promise-based play() to catch autoplay errors
             this.audioPlayer.play().catch(err => {
               console.error("Audio playback error (play failed):", err);
               this.errorMessage.set('Audio playback failed. Your browser might be blocking autoplay.');
-              // Ensure cleanup if play() fails immediately
               if (this.isSpeaking()) {
                 this.isSpeaking.set(false);
                 URL.revokeObjectURL(audioUrl);
@@ -307,7 +319,20 @@ IMPORTANT: The entire report must be written in ${languageName}.`;
             });
 
         } else {
-            throw new Error('TTS failed. No audio data received.');
+            console.error('TTS Error: No audio data. Full response:', JSON.stringify(result, null, 2));
+            let apiError = 'TTS failed. No audio data received from API.';
+            const promptFeedback = result.promptFeedback;
+            if (promptFeedback && promptFeedback.blockReason) {
+                apiError += ` (Reason: ${promptFeedback.blockReason})`;
+            } else if (result.candidates?.[0]?.finishReason) {
+                apiError += ` (Reason: ${result.candidates[0].finishReason})`;
+            } else if (!result.candidates || result.candidates.length === 0) {
+                apiError = 'TTS failed: The API returned no candidates.';
+                if (promptFeedback && promptFeedback.blockReason) {
+                   apiError += ` (Reason: ${promptFeedback.blockReason})`;
+                }
+            }
+            throw new Error(apiError);
         }
 
     } catch (error) {
@@ -318,6 +343,8 @@ IMPORTANT: The entire report must be written in ${languageName}.`;
             friendlyError = `TTS failed. ${error.message}`;
           } else if (error.message.includes('TTS failed')) {
             friendlyError = error.message;
+          } else if (error.message.toLowerCase().includes('failed to fetch')) {
+             friendlyError = 'TTS failed: A network error occurred. This could be your internet connection or a browser security (CORS) issue. Please check your connection and the browser console.';
           }
         }
         this.errorMessage.set(friendlyError);
@@ -332,16 +359,11 @@ IMPORTANT: The entire report must be written in ${languageName}.`;
     if (this.audioPlayer) {
       this.audioPlayer.pause();
       this.audioPlayer.currentTime = 0;
-
-      // Manually revoke the URL, as onended/onerror won't fire
       if (this.audioPlayer.src && this.audioPlayer.src.startsWith('blob:')) {
           URL.revokeObjectURL(this.audioPlayer.src);
       }
-      
-      // Remove listeners to prevent them firing
       this.audioPlayer.onended = null;
       this.audioPlayer.onerror = null;
-
       this.audioPlayer = null;
     }
     this.isSpeaking.set(false);
@@ -377,39 +399,32 @@ IMPORTANT: The entire report must be written in ${languageName}.`;
           return response; // Success!
         }
 
-        // Don't retry client errors (4xx), they are not transient.
         if (response.status >= 400 && response.status < 500) {
           let errorBody = 'Unknown client error';
           try {
-            // Try to get more specific error from API response
             const errorJson = await response.json();
             errorBody = errorJson?.error?.message || JSON.stringify(errorJson);
           } catch (e) {
-            // Fallback if body isn't JSON
             try {
               errorBody = await response.text();
             } catch (e2) { /* ignore */ }
           }
           console.error(`Client error: ${response.status}`, errorBody);
           lastError = new Error(`Request failed with status: ${response.status}. API message: ${errorBody}`);
-          break; // Exit loop immediately, don't retry
+          break; 
         }
 
-        // Server error (5xx) or other transient issue.
         lastError = new Error(`Server error: ${response.status}`);
-        // Wait before retrying (don't log as an error per instructions)
-
-      } catch (error) { // Network errors, CORS, etc.
+        
+      } catch (error) { 
         lastError = error as Error;
-        // Wait before retrying (don't log as an error per instructions)
       }
 
-      // Wait before the next retry
       await new Promise(res => setTimeout(res, delay));
-      delay *= 2; // Exponential backoff
+      delay *= 2; 
     }
 
-    throw lastError; // Throw the last encountered error
+    throw lastError; 
   }
 
   /**
@@ -469,8 +484,4 @@ IMPORTANT: The entire report must be written in ${languageName}.`;
 }
 
 bootstrapApplication(App);
-
-
-
-
 
